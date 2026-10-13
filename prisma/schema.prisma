@@ -1,0 +1,925 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  OWNER
+  DISPATCHER
+  TECHNICIAN
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+}
+
+enum PricingType {
+  FIXED
+  HOURLY
+  INSPECTION
+  QUOTATION
+}
+
+enum ContactPreference {
+  ALL
+  PHONE
+  WHATSAPP
+  EMAIL
+}
+
+enum BookingTimeWindow {
+  MORNING
+  AFTERNOON
+  EVENING
+  SPECIFIC
+}
+
+enum BookingSource {
+  PUBLIC_PAGE
+  CUSTOMER_PORTAL
+  MANUAL_DISPATCH
+  AI_VOICE_DRAFT
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  DECLINED
+  CANCELLED
+}
+
+enum JobStatus {
+  SCHEDULED
+  EN_ROUTE
+  IN_PROGRESS
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+enum JobPriority {
+  LOW
+  NORMAL
+  HIGH
+  EMERGENCY
+}
+
+enum AssignmentRole {
+  LEAD
+  ASSISTANT
+}
+
+enum QuotationStatus {
+  DRAFT
+  SENT
+  APPROVED
+  REJECTED
+  SUPERSEDED
+}
+
+enum LineItemType {
+  LABOUR
+  MATERIAL
+  INSPECTION
+  OTHER
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AttachmentEntityType {
+  JOB_BEFORE
+  JOB_AFTER
+  BOOKING_SYMPTOM
+  QUOTATION
+  INVOICE
+  ASSET
+  OTHER
+}
+
+enum StockMovementType {
+  PURCHASE
+  JOB_CONSUMPTION
+  RETURN
+  ADJUSTMENT
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  UPI
+  CARD
+  NETBANKING
+  RAZORPAY_SANDBOX
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum MaintenanceStatus {
+  ACTIVE
+  PAUSED
+  EXPIRED
+}
+
+enum ComplaintStatus {
+  OPEN
+  INVESTIGATING
+  RESOLVED
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+  WHATSAPP
+  IN_APP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum SubscriptionPlan {
+  STARTER
+  GROWTH
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+}
+
+enum ContactRequestStatus {
+  NEW
+  CONTACTED
+  DEMO_SCHEDULED
+}
+
+model User {
+  id              String       @id @default(uuid())
+  email           String       @unique
+  name            String
+  phone           String?
+  passwordHash    String
+  avatarUrl       String?
+  isPlatformAdmin Boolean      @default(false)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  memberships     Membership[]
+  jobAssignments  JobAssignment[]
+  auditEvents     AuditEvent[]
+
+  @@map("users")
+}
+
+model Business {
+  id                        String              @id @default(uuid())
+  name                      String
+  slug                      String              @unique
+  legalName                 String?
+  phone                     String
+  email                     String
+  address                   String?
+  city                      String
+  state                     String
+  postalCode                String
+  timezone                  String              @default("Asia/Kolkata")
+  currency                  String              @default("INR")
+  logoUrl                   String?
+  categories                String              @default("[]") // JSON string of enabled categories
+  operatingHours            String              @default("{}") // JSON string of weekly operating hours
+  serviceAreaPincodes       String              @default("[]") // JSON string of covered pincodes
+  invoicePrefix             String              @default("INV")
+  nextInvoiceNumber         Int                 @default(1001)
+  quotationPrefix           String              @default("QTN")
+  nextQuotationNumber       Int                 @default(1001)
+  taxRegistrationNumber     String?             // GSTIN
+  defaultTaxRateBasisPoints Int                 @default(1800) // 18.00% GST
+  isVerified                Boolean             @default(false)
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
+
+  memberships               Membership[]
+  invitations               Invitation[]
+  services                  BusinessService[]
+  formVersions              ServiceFormVersion[]
+  checklistTemplates        ChecklistTemplate[]
+  customers                 Customer[]
+  customerAddresses         CustomerAddress[]
+  assets                    Asset[]
+  bookings                  Booking[]
+  jobs                      Job[]
+  jobAssignments            JobAssignment[]
+  checklistResponses        ChecklistResponse[]
+  quotations                Quotation[]
+  approvals                 Approval[]
+  attachments               Attachment[]
+  inventoryItems            InventoryItem[]
+  stockMovements            StockMovement[]
+  invoices                  Invoice[]
+  payments                  Payment[]
+  refunds                   Refund[]
+  maintenancePlans          MaintenancePlan[]
+  feedbacks                 Feedback[]
+  complaints                Complaint[]
+  notifications             Notification[]
+  outboxEvents              OutboxEvent[]
+  auditEvents               AuditEvent[]
+  subscriptions             Subscription[]
+
+  @@map("businesses")
+}
+
+model Membership {
+  id         String   @id @default(uuid())
+  userId     String
+  businessId String
+  role       Role     @default(TECHNICIAN)
+  isActive   Boolean  @default(true)
+  joinedAt   DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, businessId])
+  @@index([businessId, role])
+  @@map("memberships")
+}
+
+model Invitation {
+  id              String           @id @default(uuid())
+  businessId      String
+  email           String
+  phone           String?
+  role            Role             @default(TECHNICIAN)
+  token           String           @unique
+  expiresAt       DateTime
+  status          InvitationStatus @default(PENDING)
+  invitedByUserId String
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  business        Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, status])
+  @@map("invitations")
+}
+
+model BusinessService {
+  id                       String               @id @default(uuid())
+  businessId               String
+  categoryId               String
+  name                     String
+  slug                     String
+  description              String?
+  pricingType              PricingType          @default(FIXED)
+  basePricePaise           Int                  @default(0)
+  estimatedDurationMinutes Int                  @default(60)
+  isActive                 Boolean              @default(true)
+  version                  Int                  @default(1)
+  createdAt                DateTime             @default(now())
+  updatedAt                DateTime             @updatedAt
+
+  business                 Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  formVersions             ServiceFormVersion[]
+  checklistTemplates       ChecklistTemplate[]
+  bookings                 Booking[]
+  jobs                     Job[]
+
+  @@unique([businessId, slug])
+  @@index([businessId, categoryId, isActive])
+  @@map("business_services")
+}
+
+model ServiceFormVersion {
+  id          String          @id @default(uuid())
+  businessId  String
+  serviceId   String
+  version     Int             @default(1)
+  schema      String          @default("[]") // JSON string of question definitions
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+
+  business    Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  service     BusinessService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  bookings    Booking[]
+
+  @@index([businessId, serviceId, version])
+  @@map("service_form_versions")
+}
+
+model ChecklistTemplate {
+  id          String              @id @default(uuid())
+  businessId  String
+  serviceId   String
+  title       String
+  version     Int                 @default(1)
+  items       String              @default("[]") // JSON array of inspection checklist items
+  isRequired  Boolean             @default(true)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  business    Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  service     BusinessService     @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  responses   ChecklistResponse[]
+
+  @@index([businessId, serviceId])
+  @@map("checklist_templates")
+}
+
+model Customer {
+  id                String             @id @default(uuid())
+  businessId        String
+  name              String
+  phone             String
+  email             String?
+  notes             String?
+  contactPreference ContactPreference  @default(ALL)
+  portalAccessCode  String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  business          Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  addresses         CustomerAddress[]
+  assets            Asset[]
+  bookings          Booking[]
+  jobs              Job[]
+  quotations        Quotation[]
+  invoices          Invoice[]
+  payments          Payment[]
+  maintenancePlans  MaintenancePlan[]
+  feedbacks         Feedback[]
+  complaints        Complaint[]
+
+  @@index([businessId, phone])
+  @@index([businessId, email])
+  @@map("customers")
+}
+
+model CustomerAddress {
+  id          String    @id @default(uuid())
+  customerId  String
+  businessId  String
+  line1       String
+  line2       String?
+  landmark    String?
+  city        String
+  state       String
+  postalCode  String
+  latitude    Float?
+  longitude   Float?
+  isDefault   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  customer    Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  bookings    Booking[]
+
+  @@index([businessId, customerId])
+  @@map("customer_addresses")
+}
+
+model Asset {
+  id                 String            @id @default(uuid())
+  businessId         String
+  customerId         String
+  name               String            // e.g. "1.5T Daikin Inverter Split AC"
+  category           String            // e.g. "AC", "Washing Machine"
+  brand              String?
+  modelNumber        String?
+  serialNumber       String?
+  installationDate   DateTime?
+  warrantyExpiryDate DateTime?
+  notes              String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  business           Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer           Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  jobs               Job[]
+  maintenancePlans   MaintenancePlan[]
+
+  @@index([businessId, customerId])
+  @@map("assets")
+}
+
+model Booking {
+  id                 String            @id @default(uuid())
+  businessId         String
+  customerId         String
+  customerAddressId  String?
+  serviceId          String
+  formVersionId      String?
+  bookingReference   String            // e.g. "BK-2026-1001"
+  requestedDate      DateTime
+  timeWindow         BookingTimeWindow @default(MORNING)
+  problemDescription String
+  submittedAnswers   String            @default("{}") // JSON string of answered questions
+  source             BookingSource     @default(PUBLIC_PAGE)
+  status             BookingStatus     @default(PENDING)
+  declinedReason     String?
+  confirmedAt        DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  business           Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer           Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  address            CustomerAddress?  @relation(fields: [customerAddressId], references: [id], onDelete: SetNull)
+  service            BusinessService   @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  formVersion        ServiceFormVersion? @relation(fields: [formVersionId], references: [id], onDelete: SetNull)
+  jobs               Job[]
+
+  @@unique([businessId, bookingReference])
+  @@index([businessId, status, requestedDate])
+  @@map("bookings")
+}
+
+model Job {
+  id                  String               @id @default(uuid())
+  businessId          String
+  bookingId           String?
+  customerId          String
+  serviceId           String
+  assetId             String?
+  jobNumber           String               // e.g. "JOB-2026-1001"
+  title               String
+  description         String?
+  scheduledStartTime  DateTime
+  scheduledEndTime    DateTime
+  status              JobStatus            @default(SCHEDULED)
+  priority            JobPriority          @default(NORMAL)
+  completionNotes     String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  business            Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  booking             Booking?             @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  customer            Customer             @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  service             BusinessService      @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  asset               Asset?               @relation(fields: [assetId], references: [id], onDelete: SetNull)
+
+  assignments         JobAssignment[]
+  checklistResponses  ChecklistResponse[]
+  quotations          Quotation[]
+  invoices            Invoice[]
+  feedbacks           Feedback[]
+  complaints          Complaint[]
+  stockMovements      StockMovement[]
+
+  @@unique([businessId, jobNumber])
+  @@index([businessId, status, scheduledStartTime])
+  @@index([businessId, customerId])
+  @@map("jobs")
+}
+
+model JobAssignment {
+  id         String         @id @default(uuid())
+  jobId      String
+  businessId String
+  userId     String
+  role       AssignmentRole @default(LEAD)
+  assignedAt DateTime       @default(now())
+  acceptedAt DateTime?
+  notes      String?
+  createdAt  DateTime       @default(now())
+
+  job        Job            @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  business   Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  technician User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, userId])
+  @@index([jobId, userId])
+  @@map("job_assignments")
+}
+
+model ChecklistResponse {
+  id                String            @id @default(uuid())
+  businessId        String
+  jobId             String
+  templateId        String
+  completedByUserId String?
+  responses         String            @default("[]") // JSON string of checklist answers
+  isPassed          Boolean           @default(false)
+  completedAt       DateTime          @default(now())
+  createdAt         DateTime          @default(now())
+
+  business          Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  job               Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  template          ChecklistTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, jobId])
+  @@map("checklist_responses")
+}
+
+model Quotation {
+  id              String          @id @default(uuid())
+  businessId      String
+  customerId      String
+  jobId           String?
+  quotationNumber String          // e.g. "QTN-2026-1001"
+  version         Int             @default(1)
+  status          QuotationStatus @default(DRAFT)
+  subtotalPaise   Int             @default(0)
+  discountPaise   Int             @default(0)
+  taxPaise        Int             @default(0)
+  totalPaise      Int             @default(0)
+  notes           String?
+  terms           String?
+  validUntil      DateTime
+  approvalToken   String          @unique
+  approvedAt      DateTime?
+  approvedBy      String?
+  approvedVersion Int?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  business        Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer        Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  job             Job?            @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  items           QuotationItem[]
+  approvals       Approval[]
+  invoices        Invoice[]
+
+  @@unique([businessId, quotationNumber, version])
+  @@index([businessId, status])
+  @@map("quotations")
+}
+
+model QuotationItem {
+  id              String       @id @default(uuid())
+  quotationId     String
+  type            LineItemType @default(LABOUR)
+  description     String
+  quantity        Int          @default(1)
+  unitPricePaise  Int          @default(0)
+  totalPaise      Int          @default(0)
+  createdAt       DateTime     @default(now())
+
+  quotation       Quotation    @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+
+  @@map("quotation_items")
+}
+
+model Approval {
+  id              String         @id @default(uuid())
+  businessId      String
+  quotationId     String
+  token           String         @unique
+  version         Int            @default(1)
+  customerIp      String?
+  userAgent       String?
+  status          ApprovalStatus @default(PENDING)
+  rejectionReason String?
+  approvedAt      DateTime?
+  createdAt       DateTime       @default(now())
+
+  business        Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  quotation       Quotation      @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, quotationId])
+  @@map("approvals")
+}
+
+model Attachment {
+  id               String               @id @default(uuid())
+  businessId       String
+  entityType       AttachmentEntityType @default(OTHER)
+  entityId         String
+  fileName         String
+  fileKey          String
+  fileUrl          String
+  fileSizeBytes    Int                  @default(0)
+  mimeType         String
+  uploadedByUserId String?
+  createdAt        DateTime             @default(now())
+
+  business         Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, entityType, entityId])
+  @@map("attachments")
+}
+
+model InventoryItem {
+  id                String          @id @default(uuid())
+  businessId        String
+  name              String
+  sku               String
+  category          String
+  unit              String          @default("pcs") // pcs, meters, litres, kg
+  unitCostPaise     Int             @default(0)
+  sellingPricePaise Int             @default(0)
+  stockQuantity     Int             @default(0)
+  minStockThreshold Int             @default(5)
+  location          String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  business          Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  movements         StockMovement[]
+
+  @@unique([businessId, sku])
+  @@index([businessId, category])
+  @@map("inventory_items")
+}
+
+model StockMovement {
+  id              String            @id @default(uuid())
+  businessId      String
+  inventoryItemId String
+  jobId           String?
+  type            StockMovementType @default(ADJUSTMENT)
+  quantityChange  Int               // positive for add/purchase, negative for consumption
+  previousQuantity Int
+  newQuantity     Int
+  reason          String?
+  actorUserId     String?
+  createdAt       DateTime          @default(now())
+
+  business        Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  item            InventoryItem     @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  job             Job?              @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, inventoryItemId])
+  @@map("stock_movements")
+}
+
+model Invoice {
+  id            String        @id @default(uuid())
+  businessId    String
+  customerId    String
+  jobId         String?
+  quotationId   String?
+  invoiceNumber String        // e.g. "INV-2026-1001"
+  status        InvoiceStatus @default(DRAFT)
+  issueDate     DateTime      @default(now())
+  dueDate       DateTime
+  subtotalPaise Int           @default(0)
+  discountPaise Int           @default(0)
+  taxPaise      Int           @default(0)
+  totalPaise    Int           @default(0)
+  paidAmountPaise Int         @default(0)
+  balancePaise  Int           @default(0)
+  pdfKey        String?
+  pdfUrl        String?
+  notes         String?
+  terms         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  business      Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer      Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  job           Job?          @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  quotation     Quotation?    @relation(fields: [quotationId], references: [id], onDelete: SetNull)
+  items         InvoiceItem[]
+  payments      Payment[]
+
+  @@unique([businessId, invoiceNumber])
+  @@index([businessId, status, issueDate])
+  @@index([businessId, customerId])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id             String       @id @default(uuid())
+  invoiceId      String
+  type           LineItemType @default(LABOUR)
+  description    String
+  quantity       Int          @default(1)
+  unitPricePaise Int          @default(0)
+  totalPaise     Int          @default(0)
+  createdAt      DateTime     @default(now())
+
+  invoice        Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@map("invoice_items")
+}
+
+model Payment {
+  id                   String        @id @default(uuid())
+  businessId           String
+  invoiceId            String
+  customerId           String
+  amountPaise          Int
+  method               PaymentMethod @default(UPI)
+  transactionReference String?
+  status               PaymentStatus @default(SUCCESS)
+  recordedByUserId     String?
+  receivedAt           DateTime      @default(now())
+  gatewayOrderId       String?
+  gatewayPaymentId     String?
+  gatewaySignature     String?
+  createdAt            DateTime      @default(now())
+
+  business             Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  invoice              Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  customer             Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  refunds              Refund[]
+
+  @@index([businessId, invoiceId])
+  @@index([businessId, receivedAt])
+  @@map("payments")
+}
+
+model Refund {
+  id               String   @id @default(uuid())
+  businessId       String
+  paymentId        String
+  amountPaise      Int
+  reason           String?
+  recordedByUserId String?
+  createdAt        DateTime @default(now())
+
+  business         Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  payment          Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, paymentId])
+  @@map("refunds")
+}
+
+model MaintenancePlan {
+  id              String            @id @default(uuid())
+  businessId      String
+  customerId      String
+  assetId         String?
+  title           String            // e.g. "Annual AC Maintenance (2 Services/yr)"
+  frequencyMonths Int               @default(6)
+  nextServiceDate DateTime
+  pricePaise      Int               @default(0)
+  status          MaintenanceStatus @default(ACTIVE)
+  notes           String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  business        Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer        Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  asset           Asset?            @relation(fields: [assetId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, customerId])
+  @@index([businessId, status, nextServiceDate])
+  @@map("maintenance_plans")
+}
+
+model Feedback {
+  id         String   @id @default(uuid())
+  businessId String
+  jobId      String
+  customerId String
+  rating     Int      @default(5) // 1 to 5
+  comment    String?
+  createdAt  DateTime @default(now())
+
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  job        Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, jobId])
+  @@map("feedback")
+}
+
+model Complaint {
+  id              String          @id @default(uuid())
+  businessId      String
+  jobId           String
+  customerId      String
+  complaintNumber String          // e.g. "CMP-1001"
+  title           String
+  description     String
+  status          ComplaintStatus @default(OPEN)
+  resolutionNotes String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  business        Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  job             Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  customer        Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, complaintNumber])
+  @@index([businessId, status])
+  @@map("complaints")
+}
+
+model Notification {
+  id         String              @id @default(uuid())
+  businessId String
+  userId     String?
+  customerId String?
+  channel    NotificationChannel @default(IN_APP)
+  recipient  String
+  title      String
+  body       String
+  status     NotificationStatus  @default(PENDING)
+  sentAt     DateTime?
+  error      String?
+  createdAt  DateTime            @default(now())
+
+  business   Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, status])
+  @@map("notifications")
+}
+
+model OutboxEvent {
+  id            String       @id @default(uuid())
+  businessId    String
+  eventType     String       // e.g. "BOOKING_CREATED", "JOB_ASSIGNED", "QUOTATION_APPROVED", "INVOICE_PAID"
+  aggregateType String       // e.g. "Booking", "Job", "Quotation", "Invoice"
+  aggregateId   String
+  payload       String       // JSON encoded payload
+  status        OutboxStatus @default(PENDING)
+  attempts      Int          @default(0)
+  lastAttemptAt DateTime?
+  errorMessage  String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  business      Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([businessId, eventType])
+  @@map("outbox_events")
+}
+
+model AuditEvent {
+  id         String   @id @default(uuid())
+  businessId String
+  userId     String?
+  action     String   // e.g. "JOB_STATUS_CHANGE", "PAYMENT_RECORDED", "INVOICE_GENERATED"
+  entityType String
+  entityId   String
+  metadata   String   @default("{}") // JSON string of old/new values
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, entityType, entityId])
+  @@index([businessId, createdAt])
+  @@map("audit_events")
+}
+
+model Subscription {
+  id               String             @id @default(uuid())
+  businessId       String
+  plan             SubscriptionPlan   @default(GROWTH)
+  status           SubscriptionStatus @default(ACTIVE)
+  billingCycle     String             @default("MONTHLY") // MONTHLY, ANNUAL
+  currentPeriodEnd DateTime
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  business         Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, status])
+  @@map("subscriptions")
+}
+
+model ContactRequest {
+  id              String               @id @default(uuid())
+  name            String
+  businessName    String
+  phone           String
+  email           String
+  serviceCategory String?
+  message         String
+  status          ContactRequestStatus @default(NEW)
+  createdAt       DateTime             @default(now())
+
+  @@index([status, createdAt])
+  @@map("contact_requests")
+}
